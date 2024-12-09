@@ -1,0 +1,10 @@
+[package]
+authors = ["Davide Di Carlo <daddinuz@gmail.com>"]
+name = "cat"
+description = "Concatenative programming in Rust."
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/daddinuz/cat"
+
+[dependencies]
