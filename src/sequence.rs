@@ -54,8 +54,7 @@ where
 impl<T, H, S> Join<(T, H)> for S
 where
     T: Sequence,
-    S: Sequence + Join<T>,
-    S::Output: Push<H>,
+    S: Sequence + Join<T, Output: Push<H>>,
 {
     type Output = <S::Output as Push<H>>::Output;
 
