@@ -13,6 +13,18 @@ where
     q.apply(s)
 }
 
+pub fn app1<S, I, O1, O2, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
+where
+    S: Sequence,
+    I: Clone,
+    Q1: Apply<((), I), Output = ((), O1)>,
+    Q2: Apply<((), I), Output = ((), O2)>,
+{
+    let ((), o1) = q1.apply(((), i.clone()));
+    let ((), o2) = q2.apply(((), i));
+    ((s, o1), o2)
+}
+
 pub fn dip<S, P, Q>(((s, p), q): ((S, P), Q)) -> (Q::Output, P)
 where
     S: Sequence,
@@ -140,7 +152,7 @@ where
 pub fn eq<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
     S: Sequence,
-    I: Ord,
+    I: PartialEq,
 {
     (s, l == r)
 }
@@ -148,7 +160,7 @@ where
 pub fn ne<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
     S: Sequence,
-    I: Ord,
+    I: PartialEq,
 {
     (s, l != r)
 }
@@ -357,7 +369,7 @@ where
     s
 }
 
-// who joins the thread?((s,  q): (S
+// who joins the thread?
 pub fn detach<S, Q>((s, q): (S, Q)) -> S
 where
     S: Sequence,

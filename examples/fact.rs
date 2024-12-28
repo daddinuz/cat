@@ -1,15 +1,15 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::{quote, rpn};
+use cat::{quote, stack};
 
 fn main() {
-    let fact = rpn![
+    let fact = stack![
         quote![dup, 1, le],
         quote![pop, 1],
         quote![dup, decr],
         quote![mul],
         linrec
     ];
-    let program = rpn![5, fact, display];
+    let program = stack![5, fact, display];
     program.apply(());
 }

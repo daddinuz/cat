@@ -15,7 +15,7 @@ macro_rules! push {
 }
 
 #[macro_export]
-macro_rules! rpn {
+macro_rules! stack {
     ($($e:expr),+,) => {
         $crate::push!((), $($e),+)
     };
@@ -30,9 +30,9 @@ macro_rules! rpn {
 #[macro_export]
 macro_rules! quote {
     ($($e:expr),*,) => {
-        $crate::quote::Quote($crate::rpn![$($e),*])
+        $crate::literal::Literal($crate::stack![$($e),*])
     };
     ($($e:expr),*) => {
-        $crate::quote::Quote($crate::rpn![$($e),*])
+        $crate::literal::Literal($crate::stack![$($e),*])
     };
 }

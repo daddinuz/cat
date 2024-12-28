@@ -3,6 +3,6 @@ mod sailed;
 
 pub mod apply;
 pub mod builtin;
-pub mod quote;
+pub mod literal;
 pub mod sequence;
 pub mod show;

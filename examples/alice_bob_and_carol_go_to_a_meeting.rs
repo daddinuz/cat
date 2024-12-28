@@ -1,26 +1,18 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::{quote, rpn};
+use cat::{quote, stack};
 
 fn main() {
-    let carol = quote!["cinema", eq];
+    let carol = quote![quote!["cinema", eq], quote!["disco", eq], app1, or];
 
     let bob = quote![
-        carol,        // Bob asks Carol
-        quote![true], // In the meanwhile Bob applies his logic
-        branch,       // Parallel application of the quotations above
+        carol,                                                            // Bob asks Carol
+        quote![quote!["cinema", eq], quote!["restaurant", eq], app1, or], // In the meanwhile Bob applies his logic
+        parapp1, // Parallel application of the quotations above
         and
     ];
 
-    // The definition below is equivalent
-    // let bob = quote![
-    //     quote![carol, prompt], // Bob asks Carol
-    //     quote![pop, true],     // In the meanwhile Bob applies his logic
-    //     parapp1,               // Parallel application of the quotations above (unary functions)
-    //     and
-    // ];
-
     // Alice's point of view
-    let program = rpn!["cinema", bob, prompt, display];
+    let program = stack!["cinema", bob, prompt, display];
     program.apply(());
 }
