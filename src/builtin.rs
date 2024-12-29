@@ -1,9 +1,10 @@
 use std::fmt::{Debug, Display};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Rem, Sub};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::apply::Apply;
-use crate::sequence::{Join, Sequence};
+use crate::sequence::{Cat, Sequence};
 
 pub fn i<S, Q>((s, q): (S, Q)) -> Q::Output
 where
@@ -13,6 +14,48 @@ where
     q.apply(s)
 }
 
+pub fn k<S, Q>((s, q): (S, Q)) -> (S, Q::Output)
+where
+    S: Sequence,
+    Q: Apply<()>,
+{
+    (s, q.apply(()))
+}
+
+pub fn p<S, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
+where
+    S: Sequence,
+    Q1: 'static + Send + Apply<(), Output: 'static + Send>,
+    Q2: 'static + Send + Apply<(), Output: 'static + Send>,
+{
+    let handle1 = std::thread::spawn(move || q1.apply(()));
+    let handle2 = std::thread::spawn(move || q2.apply(()));
+    let s1 = handle1.join().unwrap();
+    let s2 = handle2.join().unwrap();
+    ((s, s1), s2)
+}
+
+pub fn dip<S, P, Q>(((s, p), q): ((S, P), Q)) -> (Q::Output, P)
+where
+    S: Sequence,
+    Q: Apply<S>,
+{
+    (q.apply(s), p)
+}
+
+/// `$S ($@ -> $@ 'o1) ($@ -> $@ 'o2) => $S 'o1 'o2`
+pub fn app0<S, O1, O2, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
+where
+    S: Sequence,
+    Q1: Apply<(), Output = ((), O1)>,
+    Q2: Apply<(), Output = ((), O2)>,
+{
+    let ((), o1) = q1.apply(());
+    let ((), o2) = q2.apply(());
+    ((s, o1), o2)
+}
+
+/// `$S 'i ($@ 'i -> $@ 'o1) ($@ 'i -> $@ 'o2) => $S 'o1 'o2`
 pub fn app1<S, I, O1, O2, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
 where
     S: Sequence,
@@ -23,14 +66,6 @@ where
     let ((), o1) = q1.apply(((), i.clone()));
     let ((), o2) = q2.apply(((), i));
     ((s, o1), o2)
-}
-
-pub fn dip<S, P, Q>(((s, p), q): ((S, P), Q)) -> (Q::Output, P)
-where
-    S: Sequence,
-    Q: Apply<S>,
-{
-    (q.apply(s), p)
 }
 
 pub fn dup<S, I>((s, i): (S, I)) -> ((S, I), I)
@@ -273,7 +308,18 @@ where
     }
 }
 
-pub fn r#loop<S, Q>((mut s, q): (S, Q))
+pub fn times<S, Q>(((mut s, q), n): ((S, Q), i64)) -> S
+where
+    S: Sequence,
+    Q: Clone + Apply<S, Output = S>,
+{
+    for _ in 0..n {
+        s = q.clone().apply(s);
+    }
+    s
+}
+
+pub fn r#loop<S, Q>((mut s, q): (S, Q)) -> S
 where
     S: Sequence,
     Q: Clone + Apply<S, Output = S>,
@@ -290,8 +336,8 @@ where
     Qa: Clone + Apply<S, Output = S>,
 {
     loop {
-        let (ss, c) = qc.clone().apply(s);
-        s = ss;
+        let (z, c) = qc.clone().apply(s);
+        s = z;
 
         if !c {
             return s;
@@ -301,16 +347,25 @@ where
     }
 }
 
+pub fn cat<S, X, Y>(((s, x), y): ((S, X), Y)) -> (S, X::Output)
+where
+    S: Sequence,
+    X: Cat<Y>,
+    Y: Sequence,
+{
+    (s, x.cat(y))
+}
+
 pub fn stack<S: Sequence>(s: S) -> ((), S) {
     ((), s)
 }
 
 pub fn unstack<S, T>((s, t): (S, T)) -> S::Output
 where
-    S: Join<T>,
+    S: Cat<T>,
     T: Sequence,
 {
-    s.join(t)
+    s.cat(t)
 }
 
 pub fn linrec<S, T, Qc, Ql, Qs, Qm>(
@@ -369,89 +424,6 @@ where
     s
 }
 
-// who joins the thread?
-pub fn detach<S, Q>((s, q): (S, Q)) -> S
-where
-    S: Sequence,
-    Q: 'static + Send + Apply<(), Output: Send>,
-{
-    std::thread::spawn(move || q.apply(()));
-    s
-}
-
-// who joins the thread?
-pub fn send<S, I, Q>(((s, i), q): ((S, I), Q)) -> S
-where
-    S: Sequence,
-    I: 'static + Send,
-    Q: 'static + Send + Apply<((), I), Output: Send>,
-{
-    std::thread::spawn(move || q.apply(((), i)));
-    s
-}
-
-/// `$S ($@ -> 'o) => $S 'o`
-pub fn receive<S, O, Q>((s, q): (S, Q)) -> (S, O)
-where
-    S: Sequence,
-    O: 'static + Send,
-    Q: 'static + Send + Apply<(), Output = ((), O)>,
-{
-    let ((), o) = std::thread::spawn(move || q.apply(())).join().unwrap();
-    (s, o)
-}
-
-/// `$S 'i ($@ 'i -> $@ 'o) => $S 'o`
-pub fn prompt<S, I, O, Q>(((s, i), q): ((S, I), Q)) -> (S, O)
-where
-    S: Sequence,
-    I: 'static + Send,
-    O: 'static + Send,
-    Q: 'static + Send + Apply<((), I), Output = ((), O)>,
-{
-    let ((), o) = std::thread::spawn(move || q.apply(((), i))).join().unwrap();
-    (s, o)
-}
-
-/// `$S 'i ($@ 'i -> $@ 'o) ($S -> $Z) => $Z 'o`
-pub fn branch<S, Z, I, O, Qp, Ql>((((s, i), qp), ql): (((S, I), Qp), Ql)) -> (Z, O)
-where
-    S: Sequence,
-    Z: Sequence,
-    I: 'static + Send,
-    O: 'static + Send,
-    Qp: 'static + Send + Apply<((), I), Output = ((), O)>,
-    Ql: Apply<S, Output = Z>,
-{
-    let handle = std::thread::spawn(|| qp.apply(((), i)));
-    let z = ql.apply(s);
-    let ((), o) = handle.join().unwrap();
-    (z, o)
-}
-
-/// `$S1 ($@ -> $Z 'o1) ($S1 'o1 -> $S2 'i) ($Z 'i -> $@ 'o2) => $S2 'o2`
-pub fn reply<S1, S2, Z, O1, I, O2, Qo1, Qx, Qo2>(
-    (((s1, qo1), qi), qo2): (((S1, Qo1), Qx), Qo2),
-) -> (S2, O2)
-where
-    S1: Sequence,
-    S2: Sequence,
-    Z: 'static + Send + Sequence,
-    O1: 'static + Send,
-    I: 'static + Send,
-    O2: 'static + Send,
-    Qo1: 'static + Send + Apply<(), Output = (Z, O1)>,
-    Qx: Apply<(S1, O1), Output = (S2, I)>,
-    Qo2: 'static + Send + Apply<(Z, I), Output = ((), O2)>,
-{
-    let (z, o1) = std::thread::spawn(move || qo1.apply(())).join().unwrap();
-    let (s2, i) = qi.apply((s1, o1));
-    let ((), o2) = std::thread::spawn(move || qo2.apply((z, i)))
-        .join()
-        .unwrap();
-    (s2, o2)
-}
-
 /// `$S ($@ -> $@ 'o1) ($@ -> $@ 'o2) => $S 'o1 'o2`
 pub fn parapp0<S, O1, O2, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
 where
@@ -461,10 +433,8 @@ where
     Q1: 'static + Send + Apply<(), Output = ((), O1)>,
     Q2: 'static + Send + Apply<(), Output = ((), O2)>,
 {
-    let (handle1, handle2) = (
-        std::thread::spawn(|| q1.apply(())),
-        std::thread::spawn(|| q2.apply(())),
-    );
+    let handle1 = std::thread::spawn(move || q1.apply(()));
+    let handle2 = std::thread::spawn(move || q2.apply(()));
     let ((), o1) = handle1.join().unwrap();
     let ((), o2) = handle2.join().unwrap();
     ((s, o1), o2)
@@ -480,47 +450,129 @@ where
     Q1: 'static + Send + Apply<((), I), Output = ((), O1)>,
     Q2: 'static + Send + Apply<((), I), Output = ((), O2)>,
 {
-    let j = i.clone();
-    let (handle1, handle2) = (
-        std::thread::spawn(|| q1.apply(((), j))),
-        std::thread::spawn(|| q2.apply(((), i))),
-    );
+    let (i1, i2) = (i.clone(), i);
+    let handle1 = std::thread::spawn(move || q1.apply(((), i1)));
+    let handle2 = std::thread::spawn(move || q2.apply(((), i2)));
     let ((), o1) = handle1.join().unwrap();
     let ((), o2) = handle2.join().unwrap();
     ((s, o1), o2)
 }
 
-pub fn cross<S, Z1, Z2, X1, X2, O1, O2, M1, M2, Q1, Q2>(
-    ((((s, m1), m2), q1), q2): ((((S, M1), M2), Q1), Q2),
-) -> ((S, O1), O2)
+/// `$S ($@ -> $X) ($S -> $Z) => $Z $X`
+pub fn climb0<S, Qx, Qz>(((s, qx), qz): ((S, Qx), Qz)) -> (Qz::Output, Qx::Output)
 where
     S: Sequence,
-    Z1: 'static + Send + Sequence,
-    Z2: 'static + Send + Sequence,
-    X1: 'static + Send,
-    X2: 'static + Send,
-    O1: 'static + Send,
-    O2: 'static + Send,
-    M1: 'static + Send + Apply<(), Output = (Z1, X1)>,
-    M2: 'static + Send + Apply<(), Output = (Z2, X2)>,
-    Q1: 'static + Send + Apply<(Z1, X1), Output = ((), O1)>,
-    Q2: 'static + Send + Apply<(Z2, X2), Output = ((), O2)>,
+    Qx: 'static + Send + Apply<(), Output: 'static + Send>,
+    Qz: Apply<S>,
 {
-    let (handle1, handle2) = (
-        std::thread::spawn(|| m1.apply(())),
-        std::thread::spawn(|| m2.apply(())),
-    );
+    let handle = std::thread::spawn(|| qx.apply(()));
+    let z = qz.apply(s);
+    let x = handle.join().unwrap();
+    (z, x)
+}
 
-    let (z1, x1) = handle1.join().unwrap();
-    let (z2, x2) = handle2.join().unwrap();
+/// `$S 'i ($@ 'i -> $X) ($S -> $Z) => $Z $X`
+pub fn climb1<S, I, Qx, Qz>((((s, i), qx), qz): (((S, I), Qx), Qz)) -> (Qz::Output, Qx::Output)
+where
+    S: Sequence,
+    I: 'static + Send,
+    Qx: 'static + Send + Apply<((), I), Output: 'static + Send>,
+    Qz: Apply<S>,
+{
+    let handle = std::thread::spawn(|| qx.apply(((), i)));
+    let z = qz.apply(s);
+    let x = handle.join().unwrap();
+    (z, x)
+}
 
-    let (handle1, handle2) = (
-        std::thread::spawn(|| q1.apply((z1, x1))),
-        std::thread::spawn(|| q2.apply((z2, x2))),
-    );
+/// `$S ($@ -> $Z1) ($@ -> $Z2) => $S $Z1 $Z2`
+pub fn fork0<S, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
+where
+    S: Sequence,
+    Q1: 'static + Send + Apply<(), Output: 'static + Send>,
+    Q2: 'static + Send + Apply<(), Output: 'static + Send>,
+{
+    let handle1 = std::thread::spawn(|| q1.apply(()));
+    let handle2 = std::thread::spawn(|| q2.apply(()));
+    let z1 = handle1.join().unwrap();
+    let z2 = handle2.join().unwrap();
+    ((s, z1), z2)
+}
 
-    let ((), o1) = handle1.join().unwrap();
-    let ((), o2) = handle2.join().unwrap();
+/// `$S 'i ($@ 'i -> $Z1) ($@ 'i -> $Z2) => $S $Z1 $Z2`
+pub fn fork1<S, I, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
+where
+    S: Sequence,
+    I: 'static + Send + Clone,
+    Q1: 'static + Send + Apply<((), I), Output: 'static + Send>,
+    Q2: 'static + Send + Apply<((), I), Output: 'static + Send>,
+{
+    let (i1, i2) = (i.clone(), i);
+    let handle1 = std::thread::spawn(|| q1.apply(((), i1)));
+    let handle2 = std::thread::spawn(|| q2.apply(((), i2)));
+    let z1 = handle1.join().unwrap();
+    let z2 = handle2.join().unwrap();
+    ((s, z1), z2)
+}
 
-    ((s, o1), o2)
+pub fn send<S, T, H, Z>(((s, (t, h)), z): ((S, (T, H)), Z)) -> ((S, T), <((), H) as Cat<Z>>::Output)
+where
+    S: Sequence,
+    T: Sequence,
+    Z: Sequence,
+    ((), H): Cat<Z>,
+{
+    ((s, t), ((), h).cat(z))
+}
+
+pub fn receive<S, Z, T, H>(
+    ((s, z), (t, h)): ((S, Z), (T, H)),
+) -> ((S, <((), H) as Cat<Z>>::Output), T)
+where
+    S: Sequence,
+    Z: Sequence,
+    T: Sequence,
+    ((), H): Cat<Z>,
+{
+    ((s, ((), h).cat(z)), t)
+}
+
+pub fn reply<S, S1, O1, Om, Q1, Q2, Q3, Qm>(
+    ((s, ((((), q1), q2), q3)), qm): ((S, ((((), Q1), Q2), Q3)), Qm),
+) -> (S, Q3::Output)
+where
+    S: Sequence,
+    S1: 'static + Send + Sequence,
+    O1: 'static + Send,
+    Om: 'static + Send,
+    Q1: 'static + Send + Apply<(), Output = (S1, O1)>,
+    Q2: 'static + Send + Apply<S1, Output: 'static + Send>,
+    Q3: 'static + Send + Apply<(Q2::Output, Om), Output: 'static + Send>,
+    Qm: 'static + Send + Apply<((), O1), Output = ((), Om)>,
+{
+    let (in_sender, in_receiver) = mpsc::channel();
+    let (out_sender, out_receiver) = mpsc::channel();
+
+    let handle = std::thread::spawn(move || {
+        let (s1, o1) = q1.apply(());
+        out_sender.send(o1).unwrap();
+
+        let s2 = q2.apply(s1);
+
+        let om = in_receiver.recv().unwrap();
+        let o3 = q3.apply((s2, om));
+
+        o3
+    });
+
+    std::thread::spawn(move || {
+        let o1 = out_receiver.recv().unwrap();
+        let ((), om) = qm.apply(((), o1));
+        in_sender.send(om).unwrap();
+    })
+    .join()
+    .unwrap();
+
+    let o3 = handle.join().unwrap();
+    (s, o3)
 }

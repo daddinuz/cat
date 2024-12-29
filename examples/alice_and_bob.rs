@@ -3,13 +3,14 @@ use cat::builtin::*;
 use cat::{quote, stack};
 
 fn main() {
-    let program = stack![
-        "Alice",
-        quote!["Bob says hi to ", print, display, "Bob"], // Bob
-        prompt,
-        "Alice says hi to ",
-        print,
-        display
+    let alice = quote![
+        stack!["Alice"],
+        stack![],
+        stack!["Alice says hi to ", print, display]
     ];
+
+    let bob = quote!["Bob says hi to ", print, display, "Bob"];
+
+    let program = stack![alice, bob, reply];
     program.apply(());
 }

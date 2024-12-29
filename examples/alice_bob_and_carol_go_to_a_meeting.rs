@@ -12,7 +12,8 @@ fn main() {
         and
     ];
 
-    // Alice's point of view
-    let program = stack!["cinema", bob, prompt, display];
+    let alice = quote![stack!["cinema"], stack![], stack![display]];
+
+    let program = stack![alice, bob, reply];
     program.apply(());
 }

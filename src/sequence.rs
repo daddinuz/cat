@@ -6,59 +6,34 @@ impl Sequence for () {}
 
 impl<T, H> Sequence for (T, H) where T: Sequence {}
 
-pub trait Push<U>: Sequence {
-    type Output: Sequence;
-
-    fn push(self, value: U) -> Self::Output;
-}
-
-impl<U> Push<U> for () {
-    type Output = ((), U);
-
-    fn push(self, value: U) -> Self::Output {
-        (self, value)
-    }
-}
-
-impl<T, H, U> Push<U> for (T, H)
-where
-    T: Sequence,
-{
-    type Output = ((T, H), U);
-
-    fn push(self, value: U) -> Self::Output {
-        (self, value)
-    }
-}
-
-pub trait Join<S>: Sequence
+pub trait Cat<S>: Sequence
 where
     S: Sequence,
 {
     type Output: Sequence;
 
-    fn join(self, other: S) -> Self::Output;
+    fn cat(self, other: S) -> Self::Output;
 }
 
-impl<S> Join<()> for S
+impl<S> Cat<()> for S
 where
     S: Sequence,
 {
     type Output = S;
 
-    fn join(self, _: ()) -> Self::Output {
+    fn cat(self, _: ()) -> Self::Output {
         self
     }
 }
 
-impl<T, H, S> Join<(T, H)> for S
+impl<T, H, S> Cat<(T, H)> for S
 where
     T: Sequence,
-    S: Sequence + Join<T, Output: Push<H>>,
+    S: Sequence + Cat<T>,
 {
-    type Output = <S::Output as Push<H>>::Output;
+    type Output = (S::Output, H);
 
-    fn join(self, (tail, head): (T, H)) -> Self::Output {
-        self.join(tail).push(head)
+    fn cat(self, (tail, head): (T, H)) -> Self::Output {
+        (self.cat(tail), head)
     }
 }
