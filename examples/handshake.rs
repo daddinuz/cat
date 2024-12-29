@@ -1,7 +1,7 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::quote::Quote;
 use cat::flow;
+use cat::quote::Quote;
 
 fn main() {
     let client = flow![
