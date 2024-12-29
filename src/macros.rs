@@ -15,7 +15,7 @@ macro_rules! push {
 }
 
 #[macro_export]
-macro_rules! stack {
+macro_rules! flow {
     ($($e:expr),+,) => {
         $crate::push!((), $($e),+)
     };
@@ -24,15 +24,5 @@ macro_rules! stack {
     };
     () => {
         ()
-    };
-}
-
-#[macro_export]
-macro_rules! quote {
-    ($($e:expr),*,) => {
-        $crate::literal::Literal($crate::stack![$($e),*])
-    };
-    ($($e:expr),*) => {
-        $crate::literal::Literal($crate::stack![$($e),*])
     };
 }

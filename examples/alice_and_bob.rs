@@ -1,16 +1,17 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::{quote, stack};
+use cat::flow;
+use cat::quote::Quote;
 
 fn main() {
-    let alice = quote![
-        stack!["Alice"],
-        stack![],
-        stack!["Alice says hi to ", print, display]
+    let alice = flow![
+        flow!["Alice"],
+        flow![],
+        flow!["Alice says hi to ", print, display],
     ];
 
-    let bob = quote!["Bob says hi to ", print, display, "Bob"];
+    let bob = flow!["Bob says hi to ", print, display, "Bob"];
 
-    let program = stack![alice, bob, reply];
+    let program = flow![Quote(alice), Quote(bob), reply];
     program.apply(());
 }

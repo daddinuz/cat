@@ -1,4 +1,4 @@
-use crate::literal::Literal;
+use crate::quote::Quote;
 use crate::sequence::Sequence;
 
 pub trait Apply<I: Sequence> {
@@ -106,7 +106,7 @@ impl<S: Sequence> Apply<S> for String {
     }
 }
 
-impl<U, S: Sequence> Apply<S> for Literal<U> {
+impl<U, S: Sequence> Apply<S> for Quote<U> {
     type Output = (S, U);
 
     fn apply(self, input: S) -> Self::Output {

@@ -1,15 +1,16 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::{quote, stack};
+use cat::quote::Quote;
+use cat::flow;
 
 fn main() {
-    let fact = stack![
-        quote![dup, 1, le],
-        quote![pop, 1],
-        quote![dup, decr],
-        quote![mul],
+    let fact = flow![
+        Quote(flow![dup, 1, le]),
+        Quote(flow![pop, 1]),
+        Quote(flow![dup, decr]),
+        Quote(flow![mul]),
         linrec
     ];
-    let program = stack![5, fact, display];
+    let program = flow![5, fact, display];
     program.apply(());
 }

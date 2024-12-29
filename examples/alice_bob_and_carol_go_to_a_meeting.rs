@@ -1,19 +1,30 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::{quote, stack};
+use cat::quote::Quote;
+use cat::flow;
 
 fn main() {
-    let carol = quote![quote!["cinema", eq], quote!["disco", eq], app1, or];
-
-    let bob = quote![
-        carol,                                                            // Bob asks Carol
-        quote![quote!["cinema", eq], quote!["restaurant", eq], app1, or], // In the meanwhile Bob applies his logic
-        parapp1, // Parallel application of the quotations above
-        and
+    let carol = flow![
+        Quote(flow!["cinema", eq]),
+        Quote(flow!["disco", eq]),
+        app1,
+        or,
     ];
 
-    let alice = quote![stack!["cinema"], stack![], stack![display]];
+    let bob = flow![
+        Quote(carol), // Bob asks Carol
+        Quote(flow![
+            Quote(flow!["cinema", eq]),
+            Quote(flow!["restaurant", eq]),
+            app1,
+            or,
+        ]), // In the meanwhile Bob applies his logic
+        parapp1,      // Parallel application of the quotations above
+        and,
+    ];
 
-    let program = stack![alice, bob, reply];
+    let alice = flow![flow!["cinema"], flow![], flow![display]];
+
+    let program = flow![Quote(alice), Quote(bob), reply];
     program.apply(());
 }

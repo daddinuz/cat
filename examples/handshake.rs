@@ -1,16 +1,17 @@
 use cat::apply::Apply;
 use cat::builtin::*;
-use cat::{quote, stack};
+use cat::quote::Quote;
+use cat::flow;
 
 fn main() {
-    let client = quote![
-        stack!["syn"],
-        stack![],
-        stack!["ack", eq, "connected", "aborted", choose, display]
+    let client = flow![
+        flow!["syn"],
+        flow![],
+        flow!["ack", eq, "connected", "aborted", choose, display],
     ];
 
-    let server = quote!["syn", eq, "ack", "KO", choose];
+    let server = flow!["syn", eq, "ack", "KO", choose];
 
-    let program = stack![client, server, reply];
+    let program = flow![Quote(client), Quote(server), reply];
     program.apply(());
 }
