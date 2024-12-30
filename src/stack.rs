@@ -1,23 +1,23 @@
 use crate::sailed::Sailed;
 
-pub trait Sequence: Sailed {}
+pub trait Stack: Sailed {}
 
-impl Sequence for () {}
+impl Stack for () {}
 
-impl<T, H> Sequence for (T, H) where T: Sequence {}
+impl<T, H> Stack for (T, H) where T: Stack {}
 
-pub trait Cat<S>: Sequence
+pub trait Cat<S>: Stack
 where
-    S: Sequence,
+    S: Stack,
 {
-    type Output: Sequence;
+    type Output: Stack;
 
     fn cat(self, other: S) -> Self::Output;
 }
 
 impl<S> Cat<()> for S
 where
-    S: Sequence,
+    S: Stack,
 {
     type Output = S;
 
@@ -28,8 +28,8 @@ where
 
 impl<T, H, S> Cat<(T, H)> for S
 where
-    T: Sequence,
-    S: Sequence + Cat<T>,
+    T: Stack,
+    S: Stack + Cat<T>,
 {
     type Output = (S::Output, H);
 

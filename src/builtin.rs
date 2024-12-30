@@ -4,11 +4,11 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::apply::Apply;
-use crate::sequence::{Cat, Sequence};
+use crate::stack::{Cat, Stack};
 
 pub fn i<S, Q>((s, q): (S, Q)) -> Q::Output
 where
-    S: Sequence,
+    S: Stack,
     Q: Apply<S>,
 {
     q.apply(s)
@@ -16,7 +16,7 @@ where
 
 pub fn k<S, Q>((s, q): (S, Q)) -> (S, Q::Output)
 where
-    S: Sequence,
+    S: Stack,
     Q: Apply<()>,
 {
     (s, q.apply(()))
@@ -24,7 +24,7 @@ where
 
 pub fn p<S, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
 where
-    S: Sequence,
+    S: Stack,
     Q1: 'static + Send + Apply<(), Output: 'static + Send>,
     Q2: 'static + Send + Apply<(), Output: 'static + Send>,
 {
@@ -35,18 +35,18 @@ where
     ((s, s1), s2)
 }
 
-pub fn dip<S, P, Q>(((s, p), q): ((S, P), Q)) -> (Q::Output, P)
+pub fn dip<S, I, Q>(((s, i), q): ((S, I), Q)) -> (Q::Output, I)
 where
-    S: Sequence,
+    S: Stack,
     Q: Apply<S>,
 {
-    (q.apply(s), p)
+    (q.apply(s), i)
 }
 
 /// `$S ($@ -> $@ 'o1) ($@ -> $@ 'o2) => $S 'o1 'o2`
-pub fn app0<S, O1, O2, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
+pub fn app0<S, Q1, Q2, O1, O2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
 where
-    S: Sequence,
+    S: Stack,
     Q1: Apply<(), Output = ((), O1)>,
     Q2: Apply<(), Output = ((), O2)>,
 {
@@ -56,9 +56,9 @@ where
 }
 
 /// `$S 'i ($@ 'i -> $@ 'o1) ($@ 'i -> $@ 'o2) => $S 'o1 'o2`
-pub fn app1<S, I, O1, O2, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
+pub fn app1<S, I, Q1, Q2, O1, O2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
 where
-    S: Sequence,
+    S: Stack,
     I: Clone,
     Q1: Apply<((), I), Output = ((), O1)>,
     Q2: Apply<((), I), Output = ((), O2)>,
@@ -70,7 +70,7 @@ where
 
 pub fn dup<S, I>((s, i): (S, I)) -> ((S, I), I)
 where
-    S: Sequence,
+    S: Stack,
     I: Clone,
 {
     ((s, i.clone()), i)
@@ -78,21 +78,21 @@ where
 
 pub fn pop<S, I>((s, _): (S, I)) -> S
 where
-    S: Sequence,
+    S: Stack,
 {
     s
 }
 
 pub fn swap<S, L, R>(((s, l), r): ((S, L), R)) -> ((S, R), L)
 where
-    S: Sequence,
+    S: Stack,
 {
     ((s, r), l)
 }
 
 pub fn not<S, I>((s, i): (S, I)) -> (S, I::Output)
 where
-    S: Sequence,
+    S: Stack,
     I: Not,
 {
     (s, i.not())
@@ -100,7 +100,7 @@ where
 
 pub fn and<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: BitAnd<R>,
 {
     (s, l & r)
@@ -108,7 +108,7 @@ where
 
 pub fn or<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: BitOr<R>,
 {
     (s, l | r)
@@ -116,7 +116,7 @@ where
 
 pub fn xor<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: BitXor<R>,
 {
     (s, l ^ r)
@@ -124,7 +124,7 @@ where
 
 pub fn neg<S, I>((s, i): (S, I)) -> (S, I::Output)
 where
-    S: Sequence,
+    S: Stack,
     I: Neg,
 {
     (s, i.neg())
@@ -132,7 +132,7 @@ where
 
 pub fn add<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: Add<R>,
 {
     (s, l + r)
@@ -140,7 +140,7 @@ where
 
 pub fn sub<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: Sub<R>,
 {
     (s, l - r)
@@ -148,7 +148,7 @@ where
 
 pub fn mul<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: Mul<R>,
 {
     (s, l * r)
@@ -156,7 +156,7 @@ where
 
 pub fn div<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: Div<R>,
 {
     (s, l / r)
@@ -164,7 +164,7 @@ where
 
 pub fn rem<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
+    S: Stack,
     L: Rem<R>,
 {
     (s, l % r)
@@ -172,21 +172,21 @@ where
 
 pub fn incr<S>((s, i): (S, i64)) -> (S, i64)
 where
-    S: Sequence,
+    S: Stack,
 {
     (s, i + 1)
 }
 
 pub fn decr<S>((s, i): (S, i64)) -> (S, i64)
 where
-    S: Sequence,
+    S: Stack,
 {
     (s, i - 1)
 }
 
 pub fn eq<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
-    S: Sequence,
+    S: Stack,
     I: PartialEq,
 {
     (s, l == r)
@@ -194,7 +194,7 @@ where
 
 pub fn ne<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
-    S: Sequence,
+    S: Stack,
     I: PartialEq,
 {
     (s, l != r)
@@ -202,39 +202,39 @@ where
 
 pub fn lt<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
-    S: Sequence,
-    I: Ord,
+    S: Stack,
+    I: PartialOrd,
 {
     (s, l < r)
 }
 
 pub fn le<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
-    S: Sequence,
-    I: Ord,
+    S: Stack,
+    I: PartialOrd,
 {
     (s, l <= r)
 }
 
 pub fn gt<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
-    S: Sequence,
-    I: Ord,
+    S: Stack,
+    I: PartialOrd,
 {
     (s, l > r)
 }
 
 pub fn ge<S, I>(((s, l), r): ((S, I), I)) -> (S, bool)
 where
-    S: Sequence,
-    I: Ord,
+    S: Stack,
+    I: PartialOrd,
 {
     (s, l >= r)
 }
 
 pub fn print<S, I>((s, i): (S, I)) -> S
 where
-    S: Sequence,
+    S: Stack,
     I: Display,
 {
     print!("{i}");
@@ -243,7 +243,7 @@ where
 
 pub fn display<S, I>((s, i): (S, I)) -> S
 where
-    S: Sequence,
+    S: Stack,
     I: Display,
 {
     println!("{i}");
@@ -252,7 +252,7 @@ where
 
 pub fn debug<S, I>((s, i): (S, I)) -> S
 where
-    S: Sequence,
+    S: Stack,
     I: Debug,
 {
     println!("{i:?}");
@@ -261,7 +261,7 @@ where
 
 pub fn r#if<S, Q>(((s, c), q): ((S, bool), Q)) -> S
 where
-    S: Sequence,
+    S: Stack,
     Q: Apply<S, Output = S>,
 {
     if c {
@@ -273,7 +273,7 @@ where
 
 pub fn r#else<S, Q>(((s, c), q): ((S, bool), Q)) -> S
 where
-    S: Sequence,
+    S: Stack,
     Q: Apply<S, Output = S>,
 {
     if c {
@@ -285,8 +285,8 @@ where
 
 pub fn if_else<S, Z, Qt, Qf>((((s, c), qt), qf): (((S, bool), Qt), Qf)) -> Z
 where
-    S: Sequence,
-    Z: Sequence,
+    S: Stack,
+    Z: Stack,
     Qt: Apply<S, Output = Z>,
     Qf: Apply<S, Output = Z>,
 {
@@ -299,7 +299,7 @@ where
 
 pub fn choose<S, T>((((s, c), t), f): (((S, bool), T), T)) -> (S, T)
 where
-    S: Sequence,
+    S: Stack,
 {
     if c {
         (s, t)
@@ -310,7 +310,7 @@ where
 
 pub fn times<S, Q>(((mut s, q), n): ((S, Q), i64)) -> S
 where
-    S: Sequence,
+    S: Stack,
     Q: Clone + Apply<S, Output = S>,
 {
     for _ in 0..n {
@@ -321,7 +321,7 @@ where
 
 pub fn r#loop<S, Q>((mut s, q): (S, Q)) -> S
 where
-    S: Sequence,
+    S: Stack,
     Q: Clone + Apply<S, Output = S>,
 {
     loop {
@@ -331,7 +331,7 @@ where
 
 pub fn r#while<S, Qc, Qa>(((mut s, qc), qa): ((S, Qc), Qa)) -> S
 where
-    S: Sequence,
+    S: Stack,
     Qc: Clone + Apply<S, Output = (S, bool)>,
     Qa: Clone + Apply<S, Output = S>,
 {
@@ -347,91 +347,96 @@ where
     }
 }
 
-pub fn cat<S, X, Y>(((s, x), y): ((S, X), Y)) -> (S, X::Output)
+pub fn cat<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
-    S: Sequence,
-    X: Cat<Y>,
-    Y: Sequence,
+    S: Stack,
+    L: Cat<R>,
+    R: Stack,
 {
-    (s, x.cat(y))
+    (s, l.cat(r))
 }
 
-pub fn stack<S: Sequence>(s: S) -> ((), S) {
+pub fn stack<S>(s: S) -> ((), S)
+where
+    S: Stack,
+{
     ((), s)
 }
 
-pub fn unstack<S, T>((s, t): (S, T)) -> S::Output
+pub fn unstack<S, Z>((s, z): (S, Z)) -> S::Output
 where
-    S: Cat<T>,
-    T: Sequence,
+    S: Cat<Z>,
+    Z: Stack,
 {
-    s.cat(t)
+    s.cat(z)
 }
 
-pub fn linrec<S, T, Qc, Ql, Qs, Qm>(
-    (((((s, t), qc), ql), qs), qm): (((((S, T), Qc), Ql), Qs), Qm),
-) -> (S, T)
+pub fn linrec<S, I, Qc, Ql, Qs, Qm>(
+    (((((s, i), qc), ql), qs), qm): (((((S, I), Qc), Ql), Qs), Qm),
+) -> (S, I)
 where
-    S: Sequence,
-    Qc: Clone + Apply<((), T), Output = (((), T), bool)>,
-    Ql: Apply<((), T), Output = ((), T)>,
-    Qs: Clone + Apply<((), T), Output = (((), T), T)>,
-    Qm: Clone + Apply<(((), T), T), Output = ((), T)>,
+    S: Stack,
+    I: Clone,
+    Qc: Clone + Apply<((), I), Output = ((), bool)>,
+    Ql: Apply<((), I), Output = ((), I)>,
+    Qs: Clone + Apply<((), I), Output = (((), I), I)>,
+    Qm: Clone + Apply<(((), I), I), Output = ((), I)>,
 {
-    let (((), t), c) = qc.clone().apply(((), t));
+    let ((), c) = qc.clone().apply(((), i.clone()));
     if c {
-        let ((), t) = ql.apply(((), t));
-        (s, t)
+        let ((), i) = ql.apply(((), i));
+        (s, i)
     } else {
-        let (((), t1), t2) = qs.clone().apply(((), t));
-        let ((), t2) = linrec(((((((), t2), qc), ql), qs), qm.clone()));
-        let ((), t) = qm.apply((((), t1), t2));
-        (s, t)
+        let (((), i1), i2) = qs.clone().apply(((), i));
+        let ((), i2) = linrec(((((((), i2), qc), ql), qs), qm.clone()));
+        let ((), i) = qm.apply((((), i1), i2));
+        (s, i)
     }
 }
 
-pub fn binrec<S, T, Qc, Ql, Qs, Qm>(
-    (((((s, t), qc), ql), qs), qm): (((((S, T), Qc), Ql), Qs), Qm),
-) -> (S, T)
+pub fn binrec<S, I, Qc, Ql, Qs, Qm>(
+    (((((s, i), qc), ql), qs), qm): (((((S, I), Qc), Ql), Qs), Qm),
+) -> (S, I)
 where
-    S: Sequence,
-    Qc: Clone + Apply<((), T), Output = (((), T), bool)>,
-    Ql: Clone + Apply<((), T), Output = ((), T)>,
-    Qs: Clone + Apply<((), T), Output = (((), T), T)>,
-    Qm: Clone + Apply<(((), T), T), Output = ((), T)>,
+    S: Stack,
+    I: Clone,
+    Qc: Clone + Apply<((), I), Output = ((), bool)>,
+    Ql: Clone + Apply<((), I), Output = ((), I)>,
+    Qs: Clone + Apply<((), I), Output = (((), I), I)>,
+    Qm: Clone + Apply<(((), I), I), Output = ((), I)>,
 {
-    let (((), t), c) = qc.clone().apply(((), t));
+    let ((), c) = qc.clone().apply(((), i.clone()));
     if c {
-        let ((), t) = ql.apply(((), t));
-        (s, t)
+        let ((), i) = ql.apply(((), i));
+        (s, i)
     } else {
-        let (((), t1), t2) = qs.clone().apply(((), t));
-        let ((), t1) = binrec((
-            (((((), t1), qc.clone()), ql.clone()), qs.clone()),
+        let (((), i1), i2) = qs.clone().apply(((), i));
+        let ((), i1) = binrec((
+            (((((), i1), qc.clone()), ql.clone()), qs.clone()),
             qm.clone(),
         ));
-        let ((), t2) = binrec(((((((), t2), qc), ql), qs), qm.clone()));
-        let ((), t) = qm.apply((((), t1), t2));
-        (s, t)
+        let ((), i2) = binrec(((((((), i2), qc), ql), qs), qm.clone()));
+        let ((), i) = qm.apply((((), i1), i2));
+        (s, i)
     }
 }
 
 pub fn sleep<S>((s, millis): (S, i64)) -> S
 where
-    S: Sequence,
+    S: Stack,
 {
     std::thread::sleep(Duration::from_millis(i64::max(millis, 0) as u64));
     s
 }
 
 /// `$S ($@ -> $@ 'o1) ($@ -> $@ 'o2) => $S 'o1 'o2`
-pub fn parapp0<S, O1, O2, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
+pub fn parapp0<S, Q1, Q2, O1, O2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
 where
-    S: Sequence,
-    O1: 'static + Send,
-    O2: 'static + Send,
+    S: Stack,
     Q1: 'static + Send + Apply<(), Output = ((), O1)>,
     Q2: 'static + Send + Apply<(), Output = ((), O2)>,
+    O1: 'static + Send,
+    O2: 'static + Send,
 {
     let handle1 = std::thread::spawn(move || q1.apply(()));
     let handle2 = std::thread::spawn(move || q2.apply(()));
@@ -441,14 +446,14 @@ where
 }
 
 /// `$S 'i ($@ 'i -> $@ 'o1) ($@ 'i -> $@ 'o2) => $S 'o1 'o2`
-pub fn parapp1<S, I, O1, O2, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
+pub fn parapp1<S, I, Q1, Q2, O1, O2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
 where
-    S: Sequence,
+    S: Stack,
     I: 'static + Clone + Send,
-    O1: 'static + Send,
-    O2: 'static + Send,
     Q1: 'static + Send + Apply<((), I), Output = ((), O1)>,
     Q2: 'static + Send + Apply<((), I), Output = ((), O2)>,
+    O1: 'static + Send,
+    O2: 'static + Send,
 {
     let (i1, i2) = (i.clone(), i);
     let handle1 = std::thread::spawn(move || q1.apply(((), i1)));
@@ -461,7 +466,7 @@ where
 /// `$S ($@ -> $X) ($S -> $Z) => $Z $X`
 pub fn climb0<S, Qx, Qz>(((s, qx), qz): ((S, Qx), Qz)) -> (Qz::Output, Qx::Output)
 where
-    S: Sequence,
+    S: Stack,
     Qx: 'static + Send + Apply<(), Output: 'static + Send>,
     Qz: Apply<S>,
 {
@@ -474,7 +479,7 @@ where
 /// `$S 'i ($@ 'i -> $X) ($S -> $Z) => $Z $X`
 pub fn climb1<S, I, Qx, Qz>((((s, i), qx), qz): (((S, I), Qx), Qz)) -> (Qz::Output, Qx::Output)
 where
-    S: Sequence,
+    S: Stack,
     I: 'static + Send,
     Qx: 'static + Send + Apply<((), I), Output: 'static + Send>,
     Qz: Apply<S>,
@@ -488,7 +493,7 @@ where
 /// `$S ($@ -> $Z1) ($@ -> $Z2) => $S $Z1 $Z2`
 pub fn fork0<S, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
 where
-    S: Sequence,
+    S: Stack,
     Q1: 'static + Send + Apply<(), Output: 'static + Send>,
     Q2: 'static + Send + Apply<(), Output: 'static + Send>,
 {
@@ -502,7 +507,7 @@ where
 /// `$S 'i ($@ 'i -> $Z1) ($@ 'i -> $Z2) => $S $Z1 $Z2`
 pub fn fork1<S, I, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
 where
-    S: Sequence,
+    S: Stack,
     I: 'static + Send + Clone,
     Q1: 'static + Send + Apply<((), I), Output: 'static + Send>,
     Q2: 'static + Send + Apply<((), I), Output: 'static + Send>,
@@ -517,9 +522,9 @@ where
 
 pub fn send<S, T, H, Z>(((s, (t, h)), z): ((S, (T, H)), Z)) -> ((S, T), <((), H) as Cat<Z>>::Output)
 where
-    S: Sequence,
-    T: Sequence,
-    Z: Sequence,
+    S: Stack,
+    T: Stack,
+    Z: Stack,
     ((), H): Cat<Z>,
 {
     ((s, t), ((), h).cat(z))
@@ -529,26 +534,26 @@ pub fn receive<S, Z, T, H>(
     ((s, z), (t, h)): ((S, Z), (T, H)),
 ) -> ((S, <((), H) as Cat<Z>>::Output), T)
 where
-    S: Sequence,
-    Z: Sequence,
-    T: Sequence,
+    S: Stack,
+    Z: Stack,
+    T: Stack,
     ((), H): Cat<Z>,
 {
     ((s, ((), h).cat(z)), t)
 }
 
-pub fn reply<S, S1, O1, Om, Q1, Q2, Q3, Qm>(
+pub fn reply<S, S1, Q1, Q2, Q3, Qm, O1, Om>(
     ((s, ((((), q1), q2), q3)), qm): ((S, ((((), Q1), Q2), Q3)), Qm),
 ) -> (S, Q3::Output)
 where
-    S: Sequence,
-    S1: 'static + Send + Sequence,
-    O1: 'static + Send,
-    Om: 'static + Send,
+    S: Stack,
+    S1: 'static + Send + Stack,
     Q1: 'static + Send + Apply<(), Output = (S1, O1)>,
     Q2: 'static + Send + Apply<S1, Output: 'static + Send>,
     Q3: 'static + Send + Apply<(Q2::Output, Om), Output: 'static + Send>,
     Qm: 'static + Send + Apply<((), O1), Output = ((), Om)>,
+    O1: 'static + Send,
+    Om: 'static + Send,
 {
     let (in_sender, in_receiver) = mpsc::channel();
     let (out_sender, out_receiver) = mpsc::channel();
@@ -560,9 +565,7 @@ where
         let s2 = q2.apply(s1);
 
         let om = in_receiver.recv().unwrap();
-        let o3 = q3.apply((s2, om));
-
-        o3
+        q3.apply((s2, om))
     });
 
     std::thread::spawn(move || {
