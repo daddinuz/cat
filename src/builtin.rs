@@ -14,6 +14,14 @@ where
     q.apply(s)
 }
 
+pub fn s<S, Q, V>(((s, q), v): ((S, Q), V)) -> Q::Output
+where
+    S: Stack,
+    Q: Apply<(S, V)>,
+{
+    q.apply((s, v))
+}
+
 pub fn k<S, Q>((s, q): (S, Q)) -> (S, Q::Output)
 where
     S: Stack,
@@ -361,6 +369,15 @@ where
     S: Stack,
 {
     ((), s)
+}
+
+pub fn contains<S, I, V>(((s, i), v): ((S, I), V)) -> (S, bool)
+where
+    S: Stack,
+    I: IntoIterator<Item = V>,
+    V: PartialEq,
+{
+    (s, i.into_iter().find(|u| *u == v).is_some())
 }
 
 pub fn unstack<S, Z>((s, z): (S, Z)) -> S::Output
