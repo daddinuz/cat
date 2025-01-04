@@ -275,7 +275,7 @@ where
     s
 }
 
-pub fn r#loop<S, Q>((mut s, q): (S, Q)) -> S
+pub fn r#loop<S, Q>((mut s, q): (S, Q)) -> ()
 where
     S: Stack,
     Q: Clone + Apply<S, Output = S>,
