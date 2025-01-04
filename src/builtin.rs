@@ -4,6 +4,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::apply::Apply;
+use crate::flow;
+use crate::misc::{Contains, IsEmpty, Len};
 use crate::stack::{Cat, Stack};
 
 pub fn i<S, Q>((s, q): (S, Q)) -> Q::Output
@@ -71,8 +73,8 @@ where
     Q1: Apply<((), I), Output = ((), O1)>,
     Q2: Apply<((), I), Output = ((), O2)>,
 {
-    let ((), o1) = q1.apply(((), i.clone()));
-    let ((), o2) = q2.apply(((), i));
+    let ((), o1) = q1.apply(flow![i.clone()]);
+    let ((), o2) = q2.apply(flow![i]);
     ((s, o1), o2)
 }
 
@@ -344,8 +346,8 @@ where
     Qa: Clone + Apply<S, Output = S>,
 {
     loop {
-        let (z, c) = qc.clone().apply(s);
-        s = z;
+        let (s_tmp, c) = qc.clone().apply(s);
+        s = s_tmp;
 
         if !c {
             return s;
@@ -371,21 +373,38 @@ where
     ((), s)
 }
 
-pub fn contains<S, I, V>(((s, i), v): ((S, I), V)) -> (S, bool)
-where
-    S: Stack,
-    I: IntoIterator<Item = V>,
-    V: PartialEq,
-{
-    (s, i.into_iter().find(|u| *u == v).is_some())
-}
-
 pub fn unstack<S, Z>((s, z): (S, Z)) -> S::Output
 where
     S: Cat<Z>,
     Z: Stack,
 {
     s.cat(z)
+}
+
+pub fn contains<S, U, V>(((s, u), v): ((S, U), V)) -> (S, bool)
+where
+    S: Stack,
+    U: Contains<V>,
+{
+    (s, u.contains(v))
+}
+
+pub fn is_empty<S, U>((s, u): (S, U)) -> ((S, U), bool)
+where
+    S: Stack,
+    U: IsEmpty,
+{
+    let is_empty = u.is_empty();
+    ((s, u), is_empty)
+}
+
+pub fn len<S, U>((s, u): (S, U)) -> ((S, U), i64)
+where
+    S: Stack,
+    U: Len,
+{
+    let len = i64::try_from(u.len()).unwrap();
+    ((s, u), len)
 }
 
 pub fn linrec<S, I, Qc, Ql, Qs, Qm>(
@@ -399,14 +418,14 @@ where
     Qs: Clone + Apply<((), I), Output = (((), I), I)>,
     Qm: Clone + Apply<(((), I), I), Output = ((), I)>,
 {
-    let ((), c) = qc.clone().apply(((), i.clone()));
+    let ((), c) = qc.clone().apply(flow![i.clone()]);
     if c {
-        let ((), i) = ql.apply(((), i));
+        let ((), i) = ql.apply(flow![i]);
         (s, i)
     } else {
-        let (((), i1), i2) = qs.clone().apply(((), i));
-        let ((), i2) = linrec(((((((), i2), qc), ql), qs), qm.clone()));
-        let ((), i) = qm.apply((((), i1), i2));
+        let (((), i1), i2) = qs.clone().apply(flow![i]);
+        let ((), i2) = linrec(flow![i2, qc, ql, qs, qm.clone()]);
+        let ((), i) = qm.apply(flow![i1, i2]);
         (s, i)
     }
 }
@@ -422,18 +441,50 @@ where
     Qs: Clone + Apply<((), I), Output = (((), I), I)>,
     Qm: Clone + Apply<(((), I), I), Output = ((), I)>,
 {
-    let ((), c) = qc.clone().apply(((), i.clone()));
+    let ((), c) = qc.clone().apply(flow![i.clone()]);
     if c {
-        let ((), i) = ql.apply(((), i));
+        let ((), i) = ql.apply(flow![i]);
         (s, i)
     } else {
-        let (((), i1), i2) = qs.clone().apply(((), i));
-        let ((), i1) = binrec((
-            (((((), i1), qc.clone()), ql.clone()), qs.clone()),
-            qm.clone(),
-        ));
-        let ((), i2) = binrec(((((((), i2), qc), ql), qs), qm.clone()));
-        let ((), i) = qm.apply((((), i1), i2));
+        let (((), i1), i2) = qs.clone().apply(flow![i]);
+        let ((), i1) = binrec(flow![i1, qc.clone(), ql.clone(), qs.clone(), qm.clone()]);
+        let ((), i2) = binrec(flow![i2, qc, ql, qs, qm.clone()]);
+        let ((), i) = qm.apply(flow![i1, i2]);
+        (s, i)
+    }
+}
+
+pub fn parbinrec<S, I, Qc, Ql, Qs, Qm>(
+    (((((s, i), qc), ql), qs), qm): (((((S, I), Qc), Ql), Qs), Qm),
+) -> (S, I)
+where
+    S: Stack,
+    I: 'static + Send + Clone,
+    Qc: 'static + Send + Clone + Apply<((), I), Output = ((), bool)>,
+    Ql: 'static + Send + Clone + Apply<((), I), Output = ((), I)>,
+    Qs: 'static + Send + Clone + Apply<((), I), Output = (((), I), I)>,
+    Qm: 'static + Send + Clone + Apply<(((), I), I), Output = ((), I)>,
+{
+    let ((), c) = qc.clone().apply(flow![i.clone()]);
+    if c {
+        let ((), i) = ql.apply(flow![i]);
+        (s, i)
+    } else {
+        let (((), i1), i2) = qs.clone().apply(flow![i]);
+
+        let handle1 = {
+            let (qc, ql, qs, qm) = (qc.clone(), ql.clone(), qs.clone(), qm.clone());
+            std::thread::spawn(move || parbinrec(flow![i1, qc, ql, qs, qm]))
+        };
+
+        let handle2 = {
+            let qm = qm.clone();
+            std::thread::spawn(move || parbinrec(flow![i2, qc, ql, qs, qm]))
+        };
+
+        let ((), i1) = handle1.join().unwrap();
+        let ((), i2) = handle2.join().unwrap();
+        let ((), i) = qm.apply(flow![i1, i2]);
         (s, i)
     }
 }
@@ -473,8 +524,8 @@ where
     O2: 'static + Send,
 {
     let (i1, i2) = (i.clone(), i);
-    let handle1 = std::thread::spawn(move || q1.apply(((), i1)));
-    let handle2 = std::thread::spawn(move || q2.apply(((), i2)));
+    let handle1 = std::thread::spawn(move || q1.apply(flow![i1]));
+    let handle2 = std::thread::spawn(move || q2.apply(flow![i2]));
     let ((), o1) = handle1.join().unwrap();
     let ((), o2) = handle2.join().unwrap();
     ((s, o1), o2)
@@ -501,7 +552,7 @@ where
     Qx: 'static + Send + Apply<((), I), Output: 'static + Send>,
     Qz: Apply<S>,
 {
-    let handle = std::thread::spawn(|| qx.apply(((), i)));
+    let handle = std::thread::spawn(|| qx.apply(flow![i]));
     let z = qz.apply(s);
     let x = handle.join().unwrap();
     (z, x)
@@ -530,8 +581,8 @@ where
     Q2: 'static + Send + Apply<((), I), Output: 'static + Send>,
 {
     let (i1, i2) = (i.clone(), i);
-    let handle1 = std::thread::spawn(|| q1.apply(((), i1)));
-    let handle2 = std::thread::spawn(|| q2.apply(((), i2)));
+    let handle1 = std::thread::spawn(|| q1.apply(flow![i1]));
+    let handle2 = std::thread::spawn(|| q2.apply(flow![i2]));
     let z1 = handle1.join().unwrap();
     let z2 = handle2.join().unwrap();
     ((s, z1), z2)
@@ -587,7 +638,7 @@ where
 
     std::thread::spawn(move || {
         let o1 = out_receiver.recv().unwrap();
-        let ((), om) = qm.apply(((), o1));
+        let ((), om) = qm.apply(flow![o1]);
         in_sender.send(om).unwrap();
     })
     .join()
