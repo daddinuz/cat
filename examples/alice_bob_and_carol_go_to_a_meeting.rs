@@ -7,20 +7,30 @@ fn main() {
     let carol = flow![
         Quote(flow!["cinema", eq]),
         Quote(flow!["disco", eq]),
-        app1,
+        y,
+        fork,
+        unstack2,
         or,
     ];
 
     let bob = flow![
-        Quote(carol), // Bob asks Carol
-        Quote(flow![
-            Quote(flow!["cinema", eq]),
-            Quote(flow!["restaurant", eq]),
-            app1,
-            or,
-        ]), // In the meanwhile Bob applies his logic
-        parapp1,      // Parallel application of the quotations above
-        and,
+        flow![],
+        flow![
+            Quote(carol),
+            Quote(flow![
+                Quote(flow!["cinema", eq]),
+                Quote(flow!["restaurant", eq]),
+                y,
+                fork,
+                unstack2,
+                or,
+            ]),
+            y,
+            fork,
+            unstack2,
+            and,
+        ],
+        flow![]
     ];
 
     let alice = flow![flow!["cinema"], flow![], flow![display]];

@@ -9,7 +9,7 @@ fn main() {
         Quote(flow![pop, 1]),
         Quote(flow![decr, dup, decr]),
         Quote(flow![add]),
-        binrec,
+        parbinrec,
     ];
     let program = flow![30, fib, display];
     program.apply(());

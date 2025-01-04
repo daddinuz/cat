@@ -5,44 +5,15 @@ use std::time::Duration;
 
 use crate::apply::Apply;
 use crate::flow;
-use crate::misc::{Contains, IsEmpty, Len};
-use crate::stack::{Cat, Stack};
+use crate::misc::{Concat, Contains, IsEmpty, Len};
+use crate::stack::Stack;
 
-pub fn i<S, Q>((s, q): (S, Q)) -> Q::Output
+pub fn apply<S, Q>((s, q): (S, Q)) -> Q::Output
 where
     S: Stack,
     Q: Apply<S>,
 {
     q.apply(s)
-}
-
-pub fn s<S, Q, V>(((s, q), v): ((S, Q), V)) -> Q::Output
-where
-    S: Stack,
-    Q: Apply<(S, V)>,
-{
-    q.apply((s, v))
-}
-
-pub fn k<S, Q>((s, q): (S, Q)) -> (S, Q::Output)
-where
-    S: Stack,
-    Q: Apply<()>,
-{
-    (s, q.apply(()))
-}
-
-pub fn p<S, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
-where
-    S: Stack,
-    Q1: 'static + Send + Apply<(), Output: 'static + Send>,
-    Q2: 'static + Send + Apply<(), Output: 'static + Send>,
-{
-    let handle1 = std::thread::spawn(move || q1.apply(()));
-    let handle2 = std::thread::spawn(move || q2.apply(()));
-    let s1 = handle1.join().unwrap();
-    let s2 = handle2.join().unwrap();
-    ((s, s1), s2)
 }
 
 pub fn dip<S, I, Q>(((s, i), q): ((S, I), Q)) -> (Q::Output, I)
@@ -51,31 +22,6 @@ where
     Q: Apply<S>,
 {
     (q.apply(s), i)
-}
-
-/// `$S ($@ -> $@ 'o1) ($@ -> $@ 'o2) => $S 'o1 'o2`
-pub fn app0<S, Q1, Q2, O1, O2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
-where
-    S: Stack,
-    Q1: Apply<(), Output = ((), O1)>,
-    Q2: Apply<(), Output = ((), O2)>,
-{
-    let ((), o1) = q1.apply(());
-    let ((), o2) = q2.apply(());
-    ((s, o1), o2)
-}
-
-/// `$S 'i ($@ 'i -> $@ 'o1) ($@ 'i -> $@ 'o2) => $S 'o1 'o2`
-pub fn app1<S, I, Q1, Q2, O1, O2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
-where
-    S: Stack,
-    I: Clone,
-    Q1: Apply<((), I), Output = ((), O1)>,
-    Q2: Apply<((), I), Output = ((), O2)>,
-{
-    let ((), o1) = q1.apply(flow![i.clone()]);
-    let ((), o2) = q2.apply(flow![i]);
-    ((s, o1), o2)
 }
 
 pub fn dup<S, I>((s, i): (S, I)) -> ((S, I), I)
@@ -357,13 +303,22 @@ where
     }
 }
 
-pub fn cat<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
+pub fn concat<S, L, R>(((s, l), r): ((S, L), R)) -> (S, L::Output)
 where
     S: Stack,
-    L: Cat<R>,
-    R: Stack,
+    L: Concat<R>,
 {
-    (s, l.cat(r))
+    (s, l.concat(r))
+}
+
+pub fn extend<S, T, I>(((s, mut t), i): ((S, T), I)) -> (S, T)
+where
+    S: Stack,
+    T: Extend<I::Item>,
+    I: IntoIterator,
+{
+    t.extend(i);
+    (s, t)
 }
 
 pub fn stack<S>(s: S) -> ((), S)
@@ -375,10 +330,37 @@ where
 
 pub fn unstack<S, Z>((s, z): (S, Z)) -> S::Output
 where
-    S: Cat<Z>,
+    S: Concat<Z>,
     Z: Stack,
 {
-    s.cat(z)
+    s.concat(z)
+}
+
+pub fn unstack2<S, Z1, Z2, X, Y>(((s, z1), z2): ((S, Z1), Z2)) -> Y
+where
+    S: Concat<Z1, Output = X>,
+    X: Concat<Z2, Output = Y>,
+    Z1: Stack,
+    Z2: Stack,
+{
+    s.concat(z1).concat(z2)
+}
+
+pub fn quote<S, U>((s, u): (S, U)) -> (S, ((), U))
+where
+    S: Stack,
+{
+    (s, ((), u))
+}
+
+pub fn compose<S, Qf, Qg>(((s, qf), qg): ((S, Qf), Qg)) -> (S, (((), Qg), Qf))
+where
+    S: Stack,
+    Qf: Apply<Qg::Output>,
+    Qg: Apply<S>,
+    (((), Qg), Qf): Apply<S, Output = Qf::Output>,
+{
+    (s, flow![qg, qf])
 }
 
 pub fn contains<S, U, V>(((s, u), v): ((S, U), V)) -> (S, bool)
@@ -465,28 +447,51 @@ where
     Qs: 'static + Send + Clone + Apply<((), I), Output = (((), I), I)>,
     Qm: 'static + Send + Clone + Apply<(((), I), I), Output = ((), I)>,
 {
-    let ((), c) = qc.clone().apply(flow![i.clone()]);
-    if c {
-        let ((), i) = ql.apply(flow![i]);
-        (s, i)
-    } else {
-        let (((), i1), i2) = qs.clone().apply(flow![i]);
+    fn rec<S, I, Qc, Ql, Qs, Qm>(
+        (((((s, i), qc), ql), qs), qm): (((((S, I), Qc), Ql), Qs), Qm),
+        pool_size: usize,
+    ) -> (S, I)
+    where
+        S: Stack,
+        I: 'static + Send + Clone,
+        Qc: 'static + Send + Clone + Apply<((), I), Output = ((), bool)>,
+        Ql: 'static + Send + Clone + Apply<((), I), Output = ((), I)>,
+        Qs: 'static + Send + Clone + Apply<((), I), Output = (((), I), I)>,
+        Qm: 'static + Send + Clone + Apply<(((), I), I), Output = ((), I)>,
+    {
+        let ((), c) = qc.clone().apply(flow![i.clone()]);
+        if c {
+            let ((), i) = ql.apply(flow![i]);
+            (s, i)
+        } else {
+            let (((), i1), i2) = qs.clone().apply(flow![i]);
 
-        let handle1 = {
-            let (qc, ql, qs, qm) = (qc.clone(), ql.clone(), qs.clone(), qm.clone());
-            std::thread::spawn(move || parbinrec(flow![i1, qc, ql, qs, qm]))
-        };
+            let (i1, i2) = if pool_size > 0 {
+                let handle = {
+                    let (qc, ql, qs, qm) = (qc.clone(), ql.clone(), qs.clone(), qm.clone());
+                    std::thread::spawn(move || rec(flow![i1, qc, ql, qs, qm], pool_size >> 1))
+                };
 
-        let handle2 = {
-            let qm = qm.clone();
-            std::thread::spawn(move || parbinrec(flow![i2, qc, ql, qs, qm]))
-        };
+                let ((), i2) = rec(flow![i2, qc, ql, qs, qm.clone()], pool_size >> 1);
+                let ((), i1) = handle.join().unwrap();
 
-        let ((), i1) = handle1.join().unwrap();
-        let ((), i2) = handle2.join().unwrap();
-        let ((), i) = qm.apply(flow![i1, i2]);
-        (s, i)
+                (i1, i2)
+            } else {
+                let ((), i1) = binrec(flow![i1, qc.clone(), ql.clone(), qs.clone(), qm.clone()]);
+                let ((), i2) = binrec(flow![i2, qc, ql, qs, qm.clone()]);
+                (i1, i2)
+            };
+
+            let ((), i) = qm.apply(flow![i1, i2]);
+            (s, i)
+        }
     }
+
+    let pool_size = std::thread::available_parallelism()
+        .map(|n| usize::from(n) >> 2)
+        .unwrap_or(0);
+
+    rec((((((s, i), qc), ql), qs), qm), pool_size)
 }
 
 pub fn sleep<S>((s, millis): (S, i64)) -> S
@@ -497,153 +502,178 @@ where
     s
 }
 
-/// `$S ($@ -> $@ 'o1) ($@ -> $@ 'o2) => $S 'o1 'o2`
-pub fn parapp0<S, Q1, Q2, O1, O2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, O1), O2)
+pub fn y<S, U, Qa, Qb, Sa, Sb>(
+    (((s, u), qa), qb): (((S, U), Qa), Qb),
+) -> ((S, (((), U), Qa)), (((), U), Qb))
 where
-    S: Stack,
-    Q1: 'static + Send + Apply<(), Output = ((), O1)>,
-    Q2: 'static + Send + Apply<(), Output = ((), O2)>,
-    O1: 'static + Send,
-    O2: 'static + Send,
+    U: Clone,
+    (((), U), Qa): Apply<Sa>,
+    (((), U), Qb): Apply<Sb>,
+    Sa: Stack,
+    Sb: Stack,
 {
-    let handle1 = std::thread::spawn(move || q1.apply(()));
-    let handle2 = std::thread::spawn(move || q2.apply(()));
-    let ((), o1) = handle1.join().unwrap();
-    let ((), o2) = handle2.join().unwrap();
-    ((s, o1), o2)
+    ((s, (((), u.clone()), qa)), (((), u), qb))
 }
 
-/// `$S 'i ($@ 'i -> $@ 'o1) ($@ 'i -> $@ 'o2) => $S 'o1 'o2`
-pub fn parapp1<S, I, Q1, Q2, O1, O2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, O1), O2)
+//           Qa
+// A:      *----*
+//        /      \
+// S: ---*        *--->
+//        \      /
+// B:      *----*
+//           Qb
+pub fn fork<S, Qa, Qb>(((s, qa), qb): ((S, Qa), Qb)) -> ((S, Qa::Output), Qb::Output)
 where
     S: Stack,
-    I: 'static + Clone + Send,
-    Q1: 'static + Send + Apply<((), I), Output = ((), O1)>,
-    Q2: 'static + Send + Apply<((), I), Output = ((), O2)>,
-    O1: 'static + Send,
-    O2: 'static + Send,
+    Qa: 'static + Send + Apply<(), Output: 'static + Send>,
+    Qb: 'static + Send + Apply<(), Output: 'static + Send>,
 {
-    let (i1, i2) = (i.clone(), i);
-    let handle1 = std::thread::spawn(move || q1.apply(flow![i1]));
-    let handle2 = std::thread::spawn(move || q2.apply(flow![i2]));
-    let ((), o1) = handle1.join().unwrap();
-    let ((), o2) = handle2.join().unwrap();
-    ((s, o1), o2)
+    let handle = std::thread::spawn(move || qa.apply(()));
+    let zb = qb.apply(());
+    let za = handle.join().unwrap();
+    ((s, za), zb)
 }
 
-/// `$S ($@ -> $X) ($S -> $Z) => $Z $X`
-pub fn climb0<S, Qx, Qz>(((s, qx), qz): ((S, Qx), Qz)) -> (Qz::Output, Qx::Output)
+//          Qa1 Qa2
+// A:      *---+---*
+//        /    |    \
+// S: ---*    Oa     *--->
+//        \    ↓    /
+// B:      *---+---*
+//          Qb1 Qb2
+pub fn send<S, Za, Qa1, Qa2, Oa, Zb, Qb1, Qb2>(
+    ((s, (((), qa1), qa2)), (((), qb1), qb2)): ((S, (((), Qa1), Qa2)), (((), Qb1), Qb2)),
+) -> ((S, Qa2::Output), Qb2::Output)
 where
     S: Stack,
-    Qx: 'static + Send + Apply<(), Output: 'static + Send>,
-    Qz: Apply<S>,
+    Za: Stack,
+    Qa1: 'static + Send + Apply<(), Output = (Za, Oa)>,
+    Qa2: 'static + Send + Apply<Za, Output: 'static + Send>,
+    Oa: 'static + Send,
+    Zb: Stack,
+    Qb1: 'static + Send + Apply<(), Output = Zb>,
+    Qb2: 'static + Send + Apply<(Zb, Oa)>,
 {
-    let handle = std::thread::spawn(|| qx.apply(()));
-    let z = qz.apply(s);
-    let x = handle.join().unwrap();
-    (z, x)
+    let (sender, receiver) = mpsc::channel();
+
+    let handle = std::thread::spawn(move || {
+        let (za, oa) = qa1.apply(());
+        sender.send(oa).unwrap();
+        qa2.apply(za)
+    });
+
+    let zb = qb1.apply(());
+    let oa = receiver.recv().unwrap();
+    let zb = qb2.apply((zb, oa));
+
+    let za = handle.join().unwrap();
+    ((s, za), zb)
 }
 
-/// `$S 'i ($@ 'i -> $X) ($S -> $Z) => $Z $X`
-pub fn climb1<S, I, Qx, Qz>((((s, i), qx), qz): (((S, I), Qx), Qz)) -> (Qz::Output, Qx::Output)
+//          Qa1 Qa2 Qa3
+// A:      *---+---+---*
+//        /    |   ↑    \
+// S: ---*    Oa  Ob     *--->
+//        \    ↓   |    /
+// B:      *---+---+---*
+//          Qb1 Qb2 Qb3
+pub fn reply<S, Za1, Za2, Qa1, Qa2, Qa3, Oa, Zb1, Zb2, Qb1, Qb2, Qb3, Ob>(
+    ((s, ((((), qa1), qa2), qa3)), ((((), qb1), qb2), qb3)): (
+        (S, ((((), Qa1), Qa2), Qa3)),
+        ((((), Qb1), Qb2), Qb3),
+    ),
+) -> ((S, Qa3::Output), Qb3::Output)
 where
     S: Stack,
-    I: 'static + Send,
-    Qx: 'static + Send + Apply<((), I), Output: 'static + Send>,
-    Qz: Apply<S>,
-{
-    let handle = std::thread::spawn(|| qx.apply(flow![i]));
-    let z = qz.apply(s);
-    let x = handle.join().unwrap();
-    (z, x)
-}
-
-/// `$S ($@ -> $Z1) ($@ -> $Z2) => $S $Z1 $Z2`
-pub fn fork0<S, Q1, Q2>(((s, q1), q2): ((S, Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
-where
-    S: Stack,
-    Q1: 'static + Send + Apply<(), Output: 'static + Send>,
-    Q2: 'static + Send + Apply<(), Output: 'static + Send>,
-{
-    let handle1 = std::thread::spawn(|| q1.apply(()));
-    let handle2 = std::thread::spawn(|| q2.apply(()));
-    let z1 = handle1.join().unwrap();
-    let z2 = handle2.join().unwrap();
-    ((s, z1), z2)
-}
-
-/// `$S 'i ($@ 'i -> $Z1) ($@ 'i -> $Z2) => $S $Z1 $Z2`
-pub fn fork1<S, I, Q1, Q2>((((s, i), q1), q2): (((S, I), Q1), Q2)) -> ((S, Q1::Output), Q2::Output)
-where
-    S: Stack,
-    I: 'static + Send + Clone,
-    Q1: 'static + Send + Apply<((), I), Output: 'static + Send>,
-    Q2: 'static + Send + Apply<((), I), Output: 'static + Send>,
-{
-    let (i1, i2) = (i.clone(), i);
-    let handle1 = std::thread::spawn(|| q1.apply(flow![i1]));
-    let handle2 = std::thread::spawn(|| q2.apply(flow![i2]));
-    let z1 = handle1.join().unwrap();
-    let z2 = handle2.join().unwrap();
-    ((s, z1), z2)
-}
-
-pub fn send<S, T, H, Z>(((s, (t, h)), z): ((S, (T, H)), Z)) -> ((S, T), <((), H) as Cat<Z>>::Output)
-where
-    S: Stack,
-    T: Stack,
-    Z: Stack,
-    ((), H): Cat<Z>,
-{
-    ((s, t), ((), h).cat(z))
-}
-
-pub fn receive<S, Z, T, H>(
-    ((s, z), (t, h)): ((S, Z), (T, H)),
-) -> ((S, <((), H) as Cat<Z>>::Output), T)
-where
-    S: Stack,
-    Z: Stack,
-    T: Stack,
-    ((), H): Cat<Z>,
-{
-    ((s, ((), h).cat(z)), t)
-}
-
-pub fn reply<S, S1, Q1, Q2, Q3, Qm, O1, Om>(
-    ((s, ((((), q1), q2), q3)), qm): ((S, ((((), Q1), Q2), Q3)), Qm),
-) -> (S, Q3::Output)
-where
-    S: Stack,
-    S1: 'static + Send + Stack,
-    Q1: 'static + Send + Apply<(), Output = (S1, O1)>,
-    Q2: 'static + Send + Apply<S1, Output: 'static + Send>,
-    Q3: 'static + Send + Apply<(Q2::Output, Om), Output: 'static + Send>,
-    Qm: 'static + Send + Apply<((), O1), Output = ((), Om)>,
-    O1: 'static + Send,
-    Om: 'static + Send,
+    Za1: Stack,
+    Za2: Stack,
+    Qa1: 'static + Send + Apply<(), Output = (Za1, Oa)>,
+    Qa2: 'static + Send + Apply<Za1, Output = Za2>,
+    Qa3: 'static + Send + Apply<(Za2, Ob), Output: 'static + Send>,
+    Oa: 'static + Send,
+    Zb1: Stack,
+    Zb2: Stack,
+    Qb1: 'static + Send + Apply<(), Output = Zb1>,
+    Qb2: 'static + Send + Apply<(Zb1, Oa), Output = (Zb2, Ob)>,
+    Qb3: 'static + Send + Apply<Zb2, Output: 'static + Send>,
+    Ob: 'static + Send,
 {
     let (in_sender, in_receiver) = mpsc::channel();
     let (out_sender, out_receiver) = mpsc::channel();
 
     let handle = std::thread::spawn(move || {
-        let (s1, o1) = q1.apply(());
-        out_sender.send(o1).unwrap();
+        let (za1, oa) = qa1.apply(());
+        out_sender.send(oa).unwrap();
 
-        let s2 = q2.apply(s1);
+        let za2 = qa2.apply(za1);
 
-        let om = in_receiver.recv().unwrap();
-        q3.apply((s2, om))
+        let ob = in_receiver.recv().unwrap();
+        qa3.apply((za2, ob))
     });
 
-    std::thread::spawn(move || {
-        let o1 = out_receiver.recv().unwrap();
-        let ((), om) = qm.apply(flow![o1]);
-        in_sender.send(om).unwrap();
-    })
-    .join()
-    .unwrap();
+    let zb1 = qb1.apply(());
 
-    let o3 = handle.join().unwrap();
-    (s, o3)
+    let oa = out_receiver.recv().unwrap();
+    let (zb2, ob) = qb2.apply((zb1, oa));
+
+    in_sender.send(ob).unwrap();
+
+    let b = qb3.apply(zb2);
+    let a = handle.join().unwrap();
+    ((s, a), b)
+}
+
+//            Qa1 Qa2 Qa3
+// A:        *---+---+---*
+//          /    |   ↑    \
+//         /    Oa  Ob     \
+//        /       \ /       \
+// S: ---*         *         *--->
+//        \       / \       /
+//         \    Ob  Oa     /
+//          \    |   ↓    /
+// B:        *---+---+---*
+//            Qb1 Qb2 Qb3
+pub fn exchange<S, Za, Qa1, Qa2, Qa3, Oa, Zb, Qb1, Qb2, Qb3, Ob>(
+    ((s, ((((), qa1), qa2), qa3)), ((((), qb1), qb2), qb3)): (
+        (S, ((((), Qa1), Qa2), Qa3)),
+        ((((), Qb1), Qb2), Qb3),
+    ),
+) -> ((S, Qa3::Output), Qb3::Output)
+where
+    S: Stack,
+    Za: Stack,
+    Qa1: 'static + Send + Apply<(), Output = (Za, Oa)>,
+    Qa2: 'static + Send + Apply<Za>,
+    Qa3: 'static + Send + Apply<(Qa2::Output, Ob), Output: 'static + Send>,
+    Oa: 'static + Send,
+    Zb: Stack,
+    Qb1: 'static + Send + Apply<(), Output = (Zb, Ob)>,
+    Qb2: 'static + Send + Apply<Zb>,
+    Qb3: 'static + Send + Apply<(Qb2::Output, Oa), Output: 'static + Send>,
+    Ob: 'static + Send,
+{
+    let (sender_ab, receiver_ab) = mpsc::channel();
+    let (sender_ba, receiver_ba) = mpsc::channel();
+
+    let handle = std::thread::spawn(move || {
+        let (za, oa) = qa1.apply(());
+        sender_ba.send(oa).unwrap();
+
+        let za = qa2.apply(za);
+
+        let ob = receiver_ab.recv().unwrap();
+        qa3.apply((za, ob))
+    });
+
+    let (zb, ob) = qb1.apply(());
+    sender_ab.send(ob).unwrap();
+
+    let zb = qb2.apply(zb);
+
+    let oa = receiver_ba.recv().unwrap();
+
+    let b = qb3.apply((zb, oa));
+    let a = handle.join().unwrap();
+    ((s, a), b)
 }

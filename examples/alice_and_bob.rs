@@ -10,7 +10,11 @@ fn main() {
         flow!["Alice says hi to ", print, display],
     ];
 
-    let bob = flow!["Bob says hi to ", print, display, "Bob"];
+    let bob = flow![
+        flow![],
+        flow!["Bob says hi to ", print, display, "Bob"],
+        flow![]
+    ];
 
     let program = flow![Quote(alice), Quote(bob), reply];
     program.apply(());

@@ -1,5 +1,64 @@
 use crate::stack::Stack;
 
+pub trait Concat<S> {
+    type Output;
+
+    fn concat(self, other: S) -> Self::Output;
+}
+
+impl<T, I> Concat<I> for Vec<T>
+where
+    I: IntoIterator<Item = T>,
+{
+    type Output = Self;
+
+    fn concat(mut self, other: I) -> Self::Output {
+        self.extend(other);
+        self
+    }
+}
+
+impl Concat<String> for String {
+    type Output = Self;
+
+    fn concat(mut self, other: String) -> Self::Output {
+        self += other.as_str();
+        self
+    }
+}
+
+impl Concat<&str> for String {
+    type Output = Self;
+
+    fn concat(mut self, other: &str) -> Self::Output {
+        self += other;
+        self
+    }
+}
+
+impl<S> Concat<()> for S
+where
+    S: Stack,
+{
+    type Output = S;
+
+    fn concat(self, _: ()) -> Self::Output {
+        self
+    }
+}
+
+impl<T, H, S> Concat<(T, H)> for S
+where
+    T: Stack,
+    S: Stack + Concat<T>,
+{
+    type Output = (S::Output, H);
+
+    fn concat(self, (tail, head): (T, H)) -> Self::Output {
+        (self.concat(tail), head)
+    }
+}
+
 pub trait Contains<T> {
     fn contains(&self, value: T) -> bool;
 }
