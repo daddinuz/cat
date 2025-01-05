@@ -677,3 +677,33 @@ where
     let a = handle.join().unwrap();
     ((s, a), b)
 }
+
+//             Qa
+// A:        *----+
+//          /     |
+//         /      Z (if Qa ends before Qb)
+//        /  Qs   ↓
+// S: ---*--------+--->
+//        \       ↑
+//         \      Z (if Qb ends before Qa)
+//          \     |
+// B:        *----+
+//             Qb
+pub fn race<S, Qa, Qb, Qs, Z>((((s, qa), qb), qs): (((S, Qa), Qb), Qs)) -> (Qs::Output, Z)
+where
+    S: Stack,
+    Qa: 'static + Send + Apply<(), Output = Z>,
+    Qb: 'static + Send + Apply<(), Output = Z>,
+    Qs: Apply<S>,
+    Z: 'static + Send + Stack,
+{
+    let (sender, receiver) = mpsc::channel();
+    let (sender_a, sender_b) = (sender.clone(), sender);
+
+    std::thread::spawn(move || sender_a.send(qa.apply(())));
+    std::thread::spawn(move || sender_b.send(qb.apply(())));
+
+    let s = qs.apply(s);
+    let z = receiver.recv().unwrap();
+    (s, z)
+}
