@@ -518,7 +518,7 @@ where
 //           Qa
 // A:      *----*
 //        /      \
-// S: ---*        *--->
+// X: ---*        *--->
 //        \      /
 // B:      *----*
 //           Qb
@@ -526,7 +526,7 @@ pub fn fork<S, Qa, Qb>(((s, qa), qb): ((S, Qa), Qb)) -> ((S, Qa::Output), Qb::Ou
 where
     S: Stack,
     Qa: 'static + Send + Apply<(), Output: 'static + Send>,
-    Qb: 'static + Send + Apply<(), Output: 'static + Send>,
+    Qb: Apply<()>,
 {
     let handle = std::thread::spawn(move || qa.apply(()));
     let zb = qb.apply(());
@@ -534,12 +534,29 @@ where
     ((s, za), zb)
 }
 
+//           Qa
+// A:      *----*
+//        /      \
+// X: ---*--------*--->
+//           Qx
+pub fn climb<S, Qa, Qx>(((s, qa), qx): ((S, Qa), Qx)) -> (Qx::Output, Qa::Output)
+where
+    S: Stack,
+    Qa: 'static + Send + Apply<(), Output: 'static + Send>,
+    Qx: Apply<S>,
+{
+    let handle = std::thread::spawn(move || qa.apply(()));
+    let zx = qx.apply(s);
+    let za = handle.join().unwrap();
+    (zx, za)
+}
+
 //          Qa1 Qa2
-// A:      *---+---*
+// A:      *---*---*
 //        /    |    \
-// S: ---*    Oa     *--->
+// X: ---*    Oa     *--->
 //        \    ↓    /
-// B:      *---+---*
+// B:      *---*---*
 //          Qb1 Qb2
 pub fn send<S, Za, Qa1, Qa2, Oa, Zb, Qb1, Qb2>(
     ((s, (((), qa1), qa2)), (((), qb1), qb2)): ((S, (((), Qa1), Qa2)), (((), Qb1), Qb2)),
@@ -571,11 +588,11 @@ where
 }
 
 //          Qa1 Qa2 Qa3
-// A:      *---+---+---*
+// A:      *---*---*---*
 //        /    |   ↑    \
-// S: ---*    Oa  Ob     *--->
+// X: ---*    Oa  Ob     *--->
 //        \    ↓   |    /
-// B:      *---+---+---*
+// B:      *---*---*---*
 //          Qb1 Qb2 Qb3
 pub fn reply<S, Za1, Za2, Qa1, Qa2, Qa3, Oa, Zb1, Zb2, Qb1, Qb2, Qb3, Ob>(
     ((s, ((((), qa1), qa2), qa3)), ((((), qb1), qb2), qb3)): (
@@ -624,15 +641,15 @@ where
 }
 
 //            Qa1 Qa2 Qa3
-// A:        *---+---+---*
+// A:        *---*---*---*
 //          /    |   ↑    \
 //         /    Oa  Ob     \
 //        /       \ /       \
-// S: ---*         *         *--->
+// X: ---*         *         *--->
 //        \       / \       /
 //         \    Ob  Oa     /
 //          \    |   ↓    /
-// B:        *---+---+---*
+// B:        *---*---*---*
 //            Qb1 Qb2 Qb3
 pub fn exchange<S, Za, Qa1, Qa2, Qa3, Oa, Zb, Qb1, Qb2, Qb3, Ob>(
     ((s, ((((), qa1), qa2), qa3)), ((((), qb1), qb2), qb3)): (
@@ -679,15 +696,15 @@ where
 }
 
 //             Qa
-// A:        *----+
+// A:        *----*
 //          /     |
 //         /      Z (if Qa ends before Qb)
 //        /  Qs   ↓
-// S: ---*--------+--->
+// X: ---*--------*--->
 //        \       ↑
 //         \      Z (if Qb ends before Qa)
 //          \     |
-// B:        *----+
+// B:        *----*
 //             Qb
 pub fn race<S, Qa, Qb, Qs, Z>((((s, qa), qb), qs): (((S, Qa), Qb), Qs)) -> (Qs::Output, Z)
 where
