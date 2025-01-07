@@ -1,21 +1,21 @@
 use cat::apply::Apply;
-use cat::builtin::*;
-use cat::flow;
-use cat::quote::Quote;
+use cat::quote::quote;
+use cat::stack::stack;
+use cat::verb::*;
 
 fn main() {
-    let alice = flow![
-        flow!["Alice"],
-        flow![],
-        flow!["Alice says hi to ", print, display],
+    let alice = quote![
+        quote!["Alice"],
+        quote![],
+        quote!["Alice says hi to ", print, display],
     ];
 
-    let bob = flow![
-        flow![],
-        flow!["Bob says hi to ", print, display, "Bob"],
-        flow![]
+    let bob = quote![
+        quote![],
+        quote!["Bob says hi to ", print, display, "Bob"],
+        quote![]
     ];
 
-    let program = flow![Quote(alice), Quote(bob), reply];
-    program.apply(());
+    let program = stack![alice, bob, reply];
+    program.apply(stack![]);
 }

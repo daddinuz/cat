@@ -1,40 +1,40 @@
 use cat::apply::Apply;
-use cat::builtin::*;
-use cat::flow;
-use cat::quote::Quote;
+use cat::quote::quote;
+use cat::stack::stack;
+use cat::verb::*;
 
 fn main() {
-    let carol = flow![
-        Quote(flow!["cinema", eq]),
-        Quote(flow!["disco", eq]),
+    let carol = quote![
+        quote!["cinema", eq],
+        quote!["disco", eq],
         y,
         fork,
-        unstack2,
+        unquote2,
         or,
     ];
 
-    let bob = flow![
-        flow![],
-        flow![
-            Quote(carol),
-            Quote(flow![
-                Quote(flow!["cinema", eq]),
-                Quote(flow!["restaurant", eq]),
+    let bob = quote![
+        quote![],
+        quote![
+            carol,
+            quote![
+                quote!["cinema", eq],
+                quote!["restaurant", eq],
                 y,
                 fork,
-                unstack2,
+                unquote2,
                 or,
-            ]),
+            ],
             y,
             fork,
-            unstack2,
+            unquote2,
             and,
         ],
-        flow![]
+        quote![]
     ];
 
-    let alice = flow![flow!["cinema"], flow![], flow![display]];
+    let alice = quote![quote!["cinema"], quote![], quote![display]];
 
-    let program = flow![Quote(alice), Quote(bob), reply];
-    program.apply(());
+    let program = stack![alice, bob, reply];
+    program.apply(stack![]);
 }

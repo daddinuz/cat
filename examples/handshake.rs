@@ -1,28 +1,28 @@
 use cat::apply::Apply;
-use cat::builtin::*;
-use cat::flow;
-use cat::quote::Quote;
+use cat::quote::quote;
+use cat::stack::stack;
+use cat::verb::*;
 
 fn main() {
-    let client = flow![
-        flow!["syn"],
-        flow!["[client] trying to connect...", display],
-        flow![
+    let client = quote![
+        quote!["syn"],
+        quote!["[client] trying to connect...", display],
+        quote![
             "ack",
             eq,
-            "[client] connection succeded",
-            "[client] connection failed",
-            choose,
+            quote!["[client] connection succeded"],
+            quote!["[client] connection failed"],
+            if_else,
             display
         ],
     ];
 
-    let server = flow![
-        flow!["[server] waiting for incoming connections...", display],
-        flow!["syn", eq, "ack", "KO", choose],
-        flow!["[server] connection accepted", display]
+    let server = quote![
+        quote!["[server] waiting for incoming connections...", display],
+        quote!["syn", eq, quote!["ack"], quote!["KO"], if_else],
+        quote!["[server] connection accepted", display]
     ];
 
-    let program = flow![Quote(client), Quote(server), reply];
-    program.apply(());
+    let program = stack![client, server, reply];
+    program.apply(stack![]);
 }

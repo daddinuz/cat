@@ -1,20 +1,17 @@
 use cat::apply::Apply;
-use cat::builtin::*;
-use cat::flow;
-use cat::quote::Quote;
+use cat::quote::quote;
+use cat::stack::stack;
+use cat::verb::*;
 
 fn main() {
-    let foo = flow!["foo"];
-    let bar = flow!["bar"];
-
-    let program = flow![
-        Quote(foo),
-        Quote(bar),
-        Quote(flow![String::from("spam ")]),
+    let program = stack![
+        quote!["foo"],
+        quote!["bar"],
+        quote![String::from("spam ")],
         race,
-        unstack,
+        unquote,
         concat,
-        display,
+        display
     ];
-    program.apply(())
+    program.apply(stack![]);
 }

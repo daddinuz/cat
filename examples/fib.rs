@@ -1,16 +1,16 @@
 use cat::apply::Apply;
-use cat::builtin::*;
-use cat::flow;
-use cat::quote::Quote;
+use cat::quote::quote;
+use cat::stack::stack;
+use cat::verb::*;
 
 fn main() {
-    let fib = flow![
-        Quote(flow![3, lt]),
-        Quote(flow![pop, 1]),
-        Quote(flow![decr, dup, decr]),
-        Quote(flow![add]),
+    let fib = stack![
+        quote![3, lt],
+        quote![pop, 1],
+        quote![decr, dup, decr],
+        quote![add],
         parbinrec,
     ];
-    let program = flow![30, fib, display];
-    program.apply(());
+    let program = stack![30, fib, display];
+    program.apply(stack![]);
 }
